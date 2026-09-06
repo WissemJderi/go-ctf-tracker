@@ -1,23 +1,23 @@
-# ⚡ Go CTF Tracker (`ctf-tracker`) ⚡
+# ⚡ Go CTF Tracker (ctf-tracker) ⚡
 
-A blazing-fast Terminal UI (TUI) application written in **Go** to track CTF (Capture The Flag) challenges effortlessly. Designed for speed, simplicity, and efficiency—whether you are playing solo or with a team.
+A lightning-fast Terminal UI (TUI) application written in Go to track Capture The Flag (CTF) challenges with minimal fuss. Built for live events and post-CTF review — fast, portable, and keyboard-driven.
 
 ---
 
 ## 🚀 Key Features
 
-- **⚡ Blazing Fast & Lightweight**: Written in pure Go with zero heavy database dependencies; stores your challenges locally in a clean, portable JSON format (`~/.config/ctf-tracker/db.json`).
-- **🔥 Live Hard Challenge Flagging**: Flag difficult or time-consuming challenges during a live CTF so you can easily find them later.
-- **🔗 Writeup Linking & Post-CTF Resolution**: When writeups are published after a CTF, revisit your flagged or missed challenges, paste the writeup URL, take notes, and mark them as solved!
-- **📊 Comprehensive Status Management**: Track challenges across multiple statuses (`Unsolved`, `Solved`, `Missed`) and difficulties (`Easy`, `Medium`, `Hard`).
-- **🔍 Advanced Filtering**: Filter your view instantly by CTF Name, Status, Flagged Hard (`🔥`), or Missed-Only challenges (`✖`).
-- **⌨️ Fully Interactive TUI**: Built with Charmbracelet (`bubbletea`, `lipgloss`) for a gorgeous, responsive, keyboard-driven terminal experience.
+- ⚡ Blazing fast & lightweight: written in pure Go with no heavy database dependencies. Data is stored locally in a single JSON file (`~/.config/ctf-tracker/db.json`).
+- 🔥 Flag Hard challenges: mark difficult or time-consuming tasks during a live CTF so you can revisit them later.
+- 🔗 Writeup links & notes: save writeup URLs and notes per challenge, then mark them resolved after reviewing the writeup.
+- 📊 Status & difficulty tracking: manage challenges across statuses (`Unsolved`, `Solved`, `Missed`) and difficulties (`Easy`, `Medium`, `Hard`).
+- 🔍 Instant filtering: filter by CTF name, status, flagged hard (`🔥`), or show missed-only challenges (`✖`).
+- ⌨️ Interactive TUI: built with Charmbracelet (`bubbletea`, `lipgloss`) for a responsive, keyboard-first terminal experience.
 
 ---
 
 ## 📦 Installation
 
-Make sure you have Go 1.22+ installed on your system.
+Prerequisites: Go 1.22+.
 
 ```bash
 # Clone the repository
@@ -35,49 +35,66 @@ sudo mv ctf-tracker /usr/local/bin/
 
 ## 🎮 Usage
 
-Run the TUI by simply executing:
+Run the TUI:
 
 ```bash
 ./ctf-tracker
 ```
 
-You can also specify a custom database file path:
+Use a custom database file:
+
 ```bash
 ./ctf-tracker -db ./my-ctfs.json
 ```
 
 ---
 
-## ⌨️ Keyboard Controls & Keybindings
+## ⌨️ Keyboard Controls
 
 | Key / Shortcut | Action |
 | :--- | :--- |
-| `a` | Add a new CTF challenge |
+| `a` | Add a new challenge |
 | `e` | Edit the selected challenge |
 | `d` | Delete the selected challenge |
 | `v` or `Enter` | View full challenge details (Notes & Writeup URL) |
 | `s` | Cycle challenge status (`Unsolved` ➔ `Solved` ➔ `Missed` ➔ `Unsolved`) |
-| `h` | Toggle **Flagged Hard** (`🔥`) instantly |
-| `t` | Filter by CTF Name prompt |
-| `c` | Cycle Status filter (`All` ➔ `Unsolved` ➔ `Solved` ➔ `Missed`) |
-| `f` | Toggle **Hard Only** filter (`🔥`) |
-| `m` | Toggle **Missed Only** filter (`✖`) |
-| `x` | Clear all active filters |
+| `h` | Toggle **Flagged Hard** (`🔥`) |
+| `t` | Filter by CTF name (prompt) |
+| `c` | Cycle status filter (`All` ➔ `Unsolved` ➔ `Solved` ➔ `Missed`) |
+| `f` | Toggle **Hard only** filter (`🔥`) |
+| `m` | Toggle **Missed only** filter (`✖`) |
+| `x` | Clear all filters |
 | `q` or `Ctrl+C` | Quit tracker |
 
 ---
 
-## 💡 Live CTF Workflow Example
+## 💡 Suggested Live CTF Workflow
 
-1. **During the Live CTF**: 
-   - Press `a` to quickly add challenges as you discover them.
-   - If you encounter a brutal crypto or reversing challenge that stumps your team, press `h` (or check `Flagged Hard?`) to mark it with a 🔥.
-2. **After the CTF / Writeups Released**:
-   - Filter your view by pressing `f` (Hard Only) or `m` (Missed Only).
-   - Press `v` or `Enter` to open the details view, press `e` to edit, paste the author's GitHub/blog writeup into the **Writeup URL** field, add key takeaways to **Notes**, and press `s` to mark it as `Solved`!
+1. During a live CTF:
+   - Press `a` to quickly add challenges as you find them.
+   - Mark blockers or time sinks with `h` so teammates can skip and return later.
+2. After the CTF / when writeups are available:
+   - Use `f` (Hard only) or `m` (Missed only) to focus on challenges to follow up.
+   - Select a challenge, press `v` or `Enter` to view details, then `e` to paste writeup URLs and add notes.
+   - Press `s` to mark a challenge as `Solved` after reviewing the writeup.
+
+This keeps your live decisions recorded and turns them into actionable post-game follow-ups.
+
+---
+
+## 🤝 Contributing
+
+Contributions, suggestions, and bug reports are welcome!
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b my-feature`.
+3. Make your changes and verify with `go build`.
+4. Open a pull request describing your changes.
+
+For larger changes, please open an issue first to discuss the design.
 
 ---
 
 ## 🛡️ License
 
-MIT License. Feel free to fork, contribute, and open source!
+This project is licensed under the MIT License — see the `LICENSE` file for details.
