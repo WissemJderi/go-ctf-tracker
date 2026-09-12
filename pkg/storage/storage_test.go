@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestJSONStorage(t *testing.T) {
@@ -279,4 +280,279 @@ func TestGenerateShortID(t *testing.T) {
 	// With 4 bytes (32 bits), we expect about 1 collision in 10k attempts
 	// In 1000 attempts, collisions are rare, which is expected
 	t.Logf("Generated %d unique IDs out of %d attempts", len(generated), maxAttempts)
+}
+
+func TestNewJSONStorage_DefaultPathUnderHome(t *testing.T) {
+	fakeHome, err := os.MkdirTemp("", "ctf-tracker-home-*")
+	if err != nil {
+		t.Fatalf("failed to create temp home: %v", err)
+	}
+	defer os.RemoveAll(fakeHome)
+
+	t.Setenv("HOME", fakeHome)
+
+	storage, err := NewJSONStorage("")
+	if err != nil {
+		t.Fatalf("NewJSONStorage failed: %v", err)
+	}
+
+	wantPath := filepath.Join(fakeHome, ".config", "ctf-tracker", "db.json")
+	if storage.GetPath() != wantPath {
+		t.Errorf("GetPath() = %q, want %q", storage.GetPath(), wantPath)
+	}
+
+	if info, err := os.Stat(filepath.Join(fakeHome, ".config", "ctf-tracker")); err != nil || !info.IsDir() {
+		t.Errorf("expected config directory to be created, stat error: %v", err)
+	}
+}
+
+func TestJSONStorage_LoadMissingFileReturnsEmptySlice(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "does-not-exist.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	challs, err := storage.Load()
+	if err != nil {
+		t.Fatalf("Load on missing file returned error: %v", err)
+	}
+	if challs == nil || len(challs) != 0 {
+		t.Errorf("expected empty non-nil slice, got %v", challs)
+	}
+}
+
+func TestJSONStorage_LoadEmptyJSONArray(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	if err := os.WriteFile(dbPath, []byte("[]"), 0644); err != nil {
+		t.Fatalf("failed to write empty array: %v", err)
+	}
+
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	challs, err := storage.Load()
+	if err != nil {
+		t.Fatalf("Load of empty JSON array failed: %v", err)
+	}
+	if len(challs) != 0 {
+		t.Errorf("expected 0 challenges, got %d", len(challs))
+	}
+}
+
+func TestJSONStorage_SaveLeavesNoTempFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	if err := storage.Save([]Challenge{{ID: "1", CTFName: "CTF", Name: "Chal", Status: StatusUnsolved}}); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	if _, err := os.Stat(dbPath + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("expected temp file to be removed after successful save, stat error: %v", err)
+	}
+}
+
+func TestJSONStorage_SaveFailureLeavesNoTempFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Point the db at a path whose parent directory doesn't exist, so the
+	// rename step fails and Save must clean up its temp file.
+	dbPath := filepath.Join(tempDir, "missing-parent", "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	err = storage.Save([]Challenge{{ID: "1", CTFName: "CTF", Name: "Chal", Status: StatusUnsolved}})
+	if err == nil {
+		t.Fatal("expected Save to fail when parent directory is missing")
+	}
+
+	if _, err := os.Stat(dbPath + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("expected temp file to be cleaned up after failed save, stat error: %v", err)
+	}
+}
+
+func TestJSONStorage_AddPreservesCallerSuppliedID(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	if err := storage.Add(Challenge{ID: "custom-id", CTFName: "CTF", Name: "Chal", Status: StatusUnsolved}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	ch, err := storage.Get("custom-id")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if ch.ID != "custom-id" {
+		t.Errorf("ID = %q, want %q", ch.ID, "custom-id")
+	}
+}
+
+func TestJSONStorage_AddSetsTimestamps(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	before := time.Now()
+	if err := storage.Add(Challenge{CTFName: "CTF", Name: "Chal", Status: StatusUnsolved}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	after := time.Now()
+
+	challs, err := storage.Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	ch := challs[0]
+
+	if ch.CreatedAt.Before(before) || ch.CreatedAt.After(after) {
+		t.Errorf("CreatedAt = %v, want between %v and %v", ch.CreatedAt, before, after)
+	}
+	if diff := ch.UpdatedAt.Sub(ch.CreatedAt); diff < 0 || diff > time.Second {
+		t.Errorf("CreatedAt and UpdatedAt should both be set on creation, close together: %v vs %v", ch.CreatedAt, ch.UpdatedAt)
+	}
+}
+
+func TestJSONStorage_UpdateOnlyTouchesTargetChallenge(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	if err := storage.Add(Challenge{ID: "a", CTFName: "CTF", Name: "First", Status: StatusUnsolved}); err != nil {
+		t.Fatalf("Add(a) failed: %v", err)
+	}
+	if err := storage.Add(Challenge{ID: "b", CTFName: "CTF", Name: "Second", Status: StatusUnsolved}); err != nil {
+		t.Fatalf("Add(b) failed: %v", err)
+	}
+
+	a, err := storage.Get("a")
+	if err != nil {
+		t.Fatalf("Get(a) failed: %v", err)
+	}
+	a.Status = StatusSolved
+	if err := storage.Update(a); err != nil {
+		t.Fatalf("Update(a) failed: %v", err)
+	}
+
+	b, err := storage.Get("b")
+	if err != nil {
+		t.Fatalf("Get(b) failed: %v", err)
+	}
+	if b.Name != "Second" || b.Status != StatusUnsolved {
+		t.Errorf("challenge b was unexpectedly modified: %+v", b)
+	}
+}
+
+func TestJSONStorage_DeleteOnlyRemovesTargetChallenge(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	for _, id := range []string{"a", "b", "c"} {
+		if err := storage.Add(Challenge{ID: id, CTFName: "CTF", Name: id, Status: StatusUnsolved}); err != nil {
+			t.Fatalf("Add(%s) failed: %v", id, err)
+		}
+	}
+
+	if err := storage.Delete("b"); err != nil {
+		t.Fatalf("Delete(b) failed: %v", err)
+	}
+
+	challs, err := storage.Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(challs) != 2 {
+		t.Fatalf("expected 2 remaining challenges, got %d", len(challs))
+	}
+	for _, c := range challs {
+		if c.ID == "b" {
+			t.Fatal("challenge b should have been removed")
+		}
+	}
+}
+
+func TestJSONStorage_GetOnEmptyStorage(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ctf-tracker-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test-db.json")
+	storage, err := NewJSONStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	_, err = storage.Get("anything")
+	if err == nil {
+		t.Fatal("expected error getting from empty storage, got nil")
+	}
+	if err.Error() != "challenge not found" {
+		t.Errorf("expected 'challenge not found' error, got: %v", err)
+	}
 }
