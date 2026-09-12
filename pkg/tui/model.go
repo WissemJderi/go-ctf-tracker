@@ -369,19 +369,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.saveChallenge(ch, false)
 			case "s":
 				m.mu.Lock()
-				ch.FlaggedHard = !ch.FlaggedHard
-				m.challenges[m.cursor] = ch
-				m.mu.Unlock()
-				// Rotate Status: Unsolved -> Solved -> Missed -> Unsolved
-				switch ch.Status {
-				case storage.StatusUnsolved:
-					ch.Status = storage.StatusSolved
-				case storage.StatusSolved:
-					ch.Status = storage.StatusMissed
-				case storage.StatusMissed:
-					ch.Status = storage.StatusUnsolved
-				}
-				m.mu.Lock()
+				ch.Status = rotateStatus(ch.Status)
 				m.challenges[m.cursor] = ch
 				m.mu.Unlock()
 				return m, m.saveChallenge(ch, false)
