@@ -1,21 +1,21 @@
-# ⚡ Go CTF Tracker (ctf-tracker) ⚡
+# Go CTF Tracker (ctf-tracker)
 
 A lightning-fast Terminal UI (TUI) application written in Go to track Capture The Flag (CTF) challenges with minimal fuss. Built for live events and post-CTF review — fast, portable, and keyboard-driven.
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-- ⚡ Blazing fast & lightweight: written in pure Go with no heavy database dependencies. Data is stored locally in a single JSON file (`~/.config/ctf-tracker/db.json`).
-- 🔥 Flag Hard challenges: mark difficult or time-consuming tasks during a live CTF so you can revisit them later.
-- 🔗 Writeup links & notes: save writeup URLs and notes per challenge, then mark them resolved after reviewing the writeup.
-- 📊 Status & difficulty tracking: manage challenges across statuses (`Unsolved`, `Solved`, `Missed`) and difficulties (`Easy`, `Medium`, `Hard`).
-- 🔍 Instant filtering: filter by CTF name, status, flagged hard (`🔥`), or show missed-only challenges (`✖`).
-- ⌨️ Interactive TUI: built with Charmbracelet (`bubbletea`, `lipgloss`) for a responsive, keyboard-first terminal experience.
+- Blazing fast & lightweight: written in pure Go with no heavy database dependencies. Data is stored locally in a single JSON file (`~/.config/ctf-tracker/db.json`).
+- Flag Hard challenges: mark difficult or time-consuming tasks during a live CTF so you can revisit them later.
+- Writeup links & notes: save writeup URLs and notes per challenge, then mark them resolved after reviewing the writeup.
+- Status & difficulty tracking: manage challenges across statuses (`Unsolved`, `Solved`, `Missed`) and difficulties (`Easy`, `Medium`, `Hard`).
+- Instant filtering: filter by CTF name, status, flagged hard (`🔥`), or show missed-only challenges (`✖`).
+- Interactive TUI: built with Charmbracelet (`bubbletea`, `lipgloss`) for a responsive, keyboard-first terminal experience.
 
 ---
 
-## 📦 Installation
+## Installation
 
 Prerequisites: Go 1.22+.
 
@@ -33,7 +33,7 @@ sudo mv ctf-tracker /usr/local/bin/
 
 ---
 
-## 🎮 Usage
+## Usage
 
 Run the TUI:
 
@@ -49,7 +49,7 @@ Use a custom database file:
 
 ---
 
-## ⌨️ Keyboard Controls
+## Keyboard Controls
 
 | Key / Shortcut | Action |
 | :--- | :--- |
@@ -68,7 +68,7 @@ Use a custom database file:
 
 ---
 
-## 💡 Suggested Live CTF Workflow
+## Suggested Live CTF Workflow
 
 1. During a live CTF:
    - Press `a` to quickly add challenges as you find them.
@@ -82,7 +82,7 @@ This keeps your live decisions recorded and turns them into actionable post-game
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions, suggestions, and bug reports are welcome!
 
@@ -95,6 +95,6 @@ For larger changes, please open an issue first to discuss the design.
 
 ---
 
-## 🛡️ License
+## License
 
 This project is licensed under the MIT License — see the `LICENSE` file for details.
