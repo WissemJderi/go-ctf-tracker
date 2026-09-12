@@ -170,14 +170,26 @@ func (m Model) listView() string {
 		cellStatus := statusStyle.Width(10).Render(statusText)
 		cellHard := hardStyle.Width(6).Render(hardText)
 
+		var rowStyle lipgloss.Style
+		if isCursor {
+			rowStyle = StyleSelected
+		} else {
+			rowStyle = StyleUnselected
+		}
+
+		cellID = rowStyle.Width(4).Render(idStr)
+		cellCTF = rowStyle.Width(20).Render(ctfStr)
+		cellName = rowStyle.Width(25).Render(nameStr)
+		cellCat = rowStyle.Width(10).Render(catStr)
+		cellPts = rowStyle.Width(6).Render(ptsStr)
+		cellDiff = diffStyle.Width(6).Render(ch.Difficulty)
+		cellStatus = statusStyle.Width(10).Render(statusText)
+		cellHard = hardStyle.Width(6).Render(hardText)
+
 		rowContent := fmt.Sprintf("%s  %s  %s  %s  %s  %s  %s  %s",
 			cellID, cellCTF, cellName, cellCat, cellPts, cellDiff, cellStatus, cellHard)
 
-		if isCursor {
-			s.WriteString(StyleSelected.Render("▸ "+rowContent) + "\n")
-		} else {
-			s.WriteString(StyleUnselected.Render("  "+rowContent) + "\n")
-		}
+		s.WriteString(rowStyle.Render("▸ "+rowContent) + "\n")
 	}
 
 	s.WriteString("\n" + m.listHelpView())
@@ -332,14 +344,14 @@ func (m Model) deleteConfirmView() string {
 
 func (m Model) listHelpView() string {
 	var s strings.Builder
-	s.WriteString(StyleHelp.Render("─── CONTROLS ───────────────────────────────────────────────────────────────────────────") + "\n")
+	s.WriteString(StyleHelp.Render("─── CONTROLS ───────────────────────────────────────────────────────────────") + "\n")
 
 	helpGrid := [][]string{
 		{"a", "add challenge", "s", "cycle status (unsolved->solved->missed)"},
 		{"e", "edit challenge", "h", "toggle hard flag (🔥)"},
 		{"d", "delete challenge", "t", "filter by CTF name"},
 		{"v/enter", "view challenge details", "c", "cycle status filter"},
-		{"f", "toggle flagged hard filter", "m", "toggle missed filter"},
+		{"f", "toggle hard only", "m", "toggle missed filter"},
 		{"x", "clear all filters", "q", "quit tracker"},
 	}
 
