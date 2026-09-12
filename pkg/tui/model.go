@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/WissemJderi/go-ctf-tracker/pkg/storage"
 	tea "github.com/charmbracelet/bubbletea"
@@ -43,7 +42,6 @@ type Model struct {
 	height        int
 	errorMsg      string
 	infoMsg       string
-	mu            sync.RWMutex
 }
 
 func NewModel(store *storage.JSONStorage) Model {
@@ -56,9 +54,7 @@ func NewModel(store *storage.JSONStorage) Model {
 // Commands
 func (m Model) loadChallenges() tea.Cmd {
 	return func() tea.Msg {
-		m.mu.RLock()
 		challs, err := m.storage.Load()
-		m.mu.RUnlock()
 		if err != nil {
 			return errMsg{err}
 		}
@@ -68,14 +64,12 @@ func (m Model) loadChallenges() tea.Cmd {
 
 func (m Model) saveChallenge(ch storage.Challenge, isNew bool) tea.Cmd {
 	return func() tea.Msg {
-		m.mu.Lock()
 		var err error
 		if isNew {
 			err = m.storage.Add(ch)
 		} else {
 			err = m.storage.Update(ch)
 		}
-		m.mu.Unlock()
 		if err != nil {
 			return errMsg{err}
 		}
@@ -85,9 +79,7 @@ func (m Model) saveChallenge(ch storage.Challenge, isNew bool) tea.Cmd {
 
 func (m Model) deleteChallengeCmd(id string) tea.Cmd {
 	return func() tea.Msg {
-		m.mu.Lock()
 		err := m.storage.Delete(id)
-		m.mu.Unlock()
 		if err != nil {
 			return errMsg{err}
 		}
@@ -155,12 +147,35 @@ func rotateStatus(status storage.ChallengeStatus) storage.ChallengeStatus {
 }
 
 func (m Model) getSelectedChallenge() (storage.Challenge, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	if len(m.filtered) == 0 || m.cursor < 0 || m.cursor >= len(m.filtered) {
 		return storage.Challenge{}, false
 	}
 	return m.filtered[m.cursor], true
+}
+
+// mutateSelected applies fn to the currently selected challenge and writes the
+// result back into m.challenges by ID (not by cursor position, since m.cursor
+// indexes m.filtered, which can differ from m.challenges once a filter is active).
+func (m *Model) mutateSelected(fn func(*storage.Challenge)) (storage.Challenge, bool) {
+	ch, ok := m.getSelectedChallenge()
+	if !ok {
+		return storage.Challenge{}, false
+	}
+	fn(&ch)
+	for i := range m.challenges {
+		if m.challenges[i].ID == ch.ID {
+			m.challenges[i] = ch
+			break
+		}
+	}
+	return ch, true
+}
+
+// refilter recomputes the filtered list and clamps the cursor to it. Call
+// after changing m.challenges or m.filters.
+func (m *Model) refilter() {
+	m.filtered = m.applyFilters()
+	m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
 }
 
 func (m Model) initAddForm() FormModel {
@@ -268,48 +283,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.mu.Lock()
 		m.width = msg.Width
 		m.height = msg.Height
-		m.mu.Unlock()
 		return m, nil
 
 	case errMsg:
-		m.mu.Lock()
 		m.errorMsg = msg.err.Error()
 		m.infoMsg = ""
-		m.mu.Unlock()
 		return m, nil
 
 	case operationSuccessMsg:
-		m.mu.Lock()
 		m.infoMsg = string(msg)
 		m.errorMsg = ""
 		m.state = stateList
-		m.mu.Unlock()
 		return m, m.loadChallenges()
 
 	case challengesLoadedMsg:
-		m.mu.Lock()
 		m.challenges = msg.challenges
-		m.filtered = m.applyFilters()
-		m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
-		m.mu.Unlock()
+		m.refilter()
 		return m, nil
 
 	case cancelFormMsg:
-		m.mu.Lock()
 		m.state = stateList
-		m.mu.Unlock()
 		return m, nil
 
 	case applyCTFFilterMsg:
-		m.mu.Lock()
 		m.filters.CTF = msg.ctf
 		m.state = stateList
-		m.filtered = m.applyFilters()
-		m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
-		m.mu.Unlock()
+		m.refilter()
 		return m, nil
 	}
 
@@ -330,9 +331,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "y", "Y":
-				m.mu.RLock()
 				ch, ok := m.getSelectedChallenge()
-				m.mu.RUnlock()
 				if ok {
 					m.state = stateList
 					return m, m.deleteChallengeCmd(ch.ID)
@@ -345,9 +344,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case stateDetail:
-		m.mu.RLock()
 		ch, ok := m.getSelectedChallenge()
-		m.mu.RUnlock()
 		if !ok {
 			m.state = stateList
 			return m, nil
@@ -362,16 +359,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.form = m.initEditForm(ch)
 				m.state = stateEdit
 			case "h":
-				m.mu.Lock()
-				ch.FlaggedHard = !ch.FlaggedHard
-				m.challenges[m.cursor] = ch
-				m.mu.Unlock()
+				ch, _ := m.mutateSelected(func(c *storage.Challenge) { c.FlaggedHard = !c.FlaggedHard })
 				return m, m.saveChallenge(ch, false)
 			case "s":
-				m.mu.Lock()
-				ch.Status = rotateStatus(ch.Status)
-				m.challenges[m.cursor] = ch
-				m.mu.Unlock()
+				ch, _ := m.mutateSelected(func(c *storage.Challenge) { c.Status = rotateStatus(c.Status) })
 				return m, m.saveChallenge(ch, false)
 			}
 		}
@@ -418,50 +409,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 			case "h": // Toggle Flagged Hard instantly
-				m.mu.RLock()
-				ch, ok := m.getSelectedChallenge()
-				m.mu.RUnlock()
+				ch, ok := m.mutateSelected(func(c *storage.Challenge) { c.FlaggedHard = !c.FlaggedHard })
 				if ok {
-					m.mu.Lock()
-					ch.FlaggedHard = !ch.FlaggedHard
-					m.challenges[m.cursor] = ch
-					m.mu.Unlock()
 					return m, m.saveChallenge(ch, false)
 				}
 
 			case "s": // Cycle Status instantly (Unsolved -> Solved -> Missed -> Unsolved)
-				m.mu.RLock()
-				ch, ok := m.getSelectedChallenge()
-				m.mu.RUnlock()
+				ch, ok := m.mutateSelected(func(c *storage.Challenge) { c.Status = rotateStatus(c.Status) })
 				if ok {
-					m.mu.Lock()
-					ch.Status = rotateStatus(ch.Status)
-					m.challenges[m.cursor] = ch
-					m.mu.Unlock()
 					return m, m.saveChallenge(ch, false)
 				}
 
 			// FILTERS KEYBINDINGS
 			case "f": // Toggle show only Flagged Hard
-				m.mu.Lock()
 				m.filters.FlaggedHard = !m.filters.FlaggedHard
-				m.filtered = m.applyFilters()
-				m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
-				m.mu.Unlock()
+				m.refilter()
 
 			case "m": // Toggle show only Missed
-				m.mu.Lock()
 				m.filters.MissedOnly = !m.filters.MissedOnly
-				m.filtered = m.applyFilters()
-				m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
-				m.mu.Unlock()
+				m.refilter()
 
 			case "t": // Filter by CTF prompt
 				m.ctfInput = m.initCTFFilterPrompt()
 				m.state = stateFilterCTFPrompt
 
 			case "c": // Cycle Status Filter (All -> Unsolved -> Solved -> Missed -> All)
-				m.mu.Lock()
 				switch m.filters.Status {
 				case "":
 					m.filters.Status = string(storage.StatusUnsolved)
@@ -472,16 +444,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case string(storage.StatusMissed):
 					m.filters.Status = ""
 				}
-				m.filtered = m.applyFilters()
-				m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
-				m.mu.Unlock()
+				m.refilter()
 
 			case "x": // Clear all filters
-				m.mu.Lock()
 				m.filters = FilterSettings{}
-				m.filtered = m.applyFilters()
-				m.cursor = normalizeCursor(m.challenges, m.filtered, m.cursor)
-				m.mu.Unlock()
+				m.refilter()
 				m.infoMsg = "Filters cleared!"
 			}
 		}

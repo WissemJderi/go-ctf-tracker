@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,7 @@ type Challenge struct {
 
 type JSONStorage struct {
 	filepath string
+	mu       sync.Mutex
 }
 
 func NewJSONStorage(customPath string) (*JSONStorage, error) {
@@ -63,6 +65,13 @@ func (s *JSONStorage) GetPath() string {
 }
 
 func (s *JSONStorage) Load() ([]Challenge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadLocked()
+}
+
+// loadLocked is Load without acquiring the mutex, for callers that already hold it.
+func (s *JSONStorage) loadLocked() ([]Challenge, error) {
 	if _, err := os.Stat(s.filepath); os.IsNotExist(err) {
 		return []Challenge{}, nil
 	}
@@ -106,6 +115,13 @@ func (s *JSONStorage) Load() ([]Challenge, error) {
 }
 
 func (s *JSONStorage) Save(challenges []Challenge) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveLocked(challenges)
+}
+
+// saveLocked is Save without acquiring the mutex, for callers that already hold it.
+func (s *JSONStorage) saveLocked(challenges []Challenge) error {
 	data, err := json.MarshalIndent(challenges, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal database: %w", err)
@@ -127,7 +143,10 @@ func (s *JSONStorage) Save(challenges []Challenge) error {
 }
 
 func (s *JSONStorage) Add(ch Challenge) error {
-	challenges, err := s.Load()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	challenges, err := s.loadLocked()
 	if err != nil {
 		return err
 	}
@@ -139,11 +158,14 @@ func (s *JSONStorage) Add(ch Challenge) error {
 	ch.UpdatedAt = time.Now()
 
 	challenges = append(challenges, ch)
-	return s.Save(challenges)
+	return s.saveLocked(challenges)
 }
 
 func (s *JSONStorage) Update(ch Challenge) error {
-	challenges, err := s.Load()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	challenges, err := s.loadLocked()
 	if err != nil {
 		return err
 	}
@@ -162,14 +184,17 @@ func (s *JSONStorage) Update(ch Challenge) error {
 		return errors.New("challenge not found")
 	}
 
-	if err := s.Save(challenges); err != nil {
+	if err := s.saveLocked(challenges); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *JSONStorage) Delete(id string) error {
-	challenges, err := s.Load()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	challenges, err := s.loadLocked()
 	if err != nil {
 		return err
 	}
@@ -187,7 +212,7 @@ func (s *JSONStorage) Delete(id string) error {
 	}
 
 	challenges = append(challenges[:index], challenges[index+1:]...)
-	if err := s.Save(challenges); err != nil {
+	if err := s.saveLocked(challenges); err != nil {
 		return err
 	}
 	return nil
