@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/WissemJderi/go-ctf-tracker/pkg/storage"
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,6 +43,17 @@ type Model struct {
 	height        int
 	errorMsg      string
 	infoMsg       string
+	infoMsgGen    int
+}
+
+func (m *Model) setInfoMsg(msg string) tea.Cmd {
+	m.infoMsg = msg
+	m.errorMsg = ""
+	m.infoMsgGen++
+	gen := m.infoMsgGen
+	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return clearInfoMsg{gen: gen}
+	})
 }
 
 func NewModel(store *storage.JSONStorage) Model {
@@ -277,6 +289,7 @@ func (m Model) initCTFFilterPrompt() FormModel {
 
 type cancelFormMsg struct{}
 type applyCTFFilterMsg struct{ ctf string }
+type clearInfoMsg struct{ gen int }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -290,13 +303,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.errorMsg = msg.err.Error()
 		m.infoMsg = ""
+		m.infoMsgGen++
 		return m, nil
 
 	case operationSuccessMsg:
-		m.infoMsg = string(msg)
-		m.errorMsg = ""
 		m.state = stateList
-		return m, m.loadChallenges()
+		cmd := m.setInfoMsg(string(msg))
+		return m, tea.Batch(m.loadChallenges(), cmd)
+
+	case clearInfoMsg:
+		if m.infoMsgGen == msg.gen {
+			m.infoMsg = ""
+		}
+		return m, nil
 
 	case challengesLoadedMsg:
 		m.challenges = msg.challenges
@@ -449,7 +468,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "x": // Clear all filters
 				m.filters = FilterSettings{}
 				m.refilter()
-				m.infoMsg = "Filters cleared!"
+				cmd = m.setInfoMsg("Filters cleared!")
 			}
 		}
 	}

@@ -319,6 +319,24 @@ func TestMessageHandlers(t *testing.T) {
 		}
 	})
 
+	t.Run("clearInfoMsg clears infoMsg if gen matches", func(t *testing.T) {
+		m := Model{state: stateList, infoMsg: "done", infoMsgGen: 1}
+		mi, _ := m.Update(clearInfoMsg{gen: 1})
+		m = mi.(Model)
+		if m.infoMsg != "" {
+			t.Fatalf("infoMsg should be cleared, got %q", m.infoMsg)
+		}
+	})
+
+	t.Run("clearInfoMsg ignores if gen mismatches", func(t *testing.T) {
+		m := Model{state: stateList, infoMsg: "new done", infoMsgGen: 2}
+		mi, _ := m.Update(clearInfoMsg{gen: 1})
+		m = mi.(Model)
+		if m.infoMsg != "new done" {
+			t.Fatalf("infoMsg should remain %q, got %q", "new done", m.infoMsg)
+		}
+	})
+
 	t.Run("cancelFormMsg returns to list", func(t *testing.T) {
 		m := Model{state: stateAdd}
 		mi, _ := m.Update(cancelFormMsg{})
