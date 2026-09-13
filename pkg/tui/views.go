@@ -21,45 +21,92 @@ const (
 )
 
 func (m Model) View() string {
+	header := m.headerView()
+	controls := m.controlsView()
+
+	headerH := renderedHeight(header)
+	controlsH := renderedHeight(controls)
+	// One line is reserved for the blank separator between header and body.
+	bodyH := m.height - headerH - controlsH - 1
+	if bodyH < 0 {
+		bodyH = 0
+	}
+	body := strings.TrimRight(m.bodyView(bodyH), "\n")
+
 	var s strings.Builder
-
-	// 1. Title/Header Banner
-	s.WriteString(StyleTitle.Render("⚡ CTF CHALLENGE TRACKER ⚡") + "\n")
-	s.WriteString(StyleSubtitle.Render("Manage live challenges, track missed ones, link writeups!") + "\n\n")
-
-	// 2. Info / Error Messages
-	if m.errorMsg != "" {
-		s.WriteString(lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("✖ "+m.errorMsg) + "\n\n")
-	} else if m.infoMsg != "" {
-		s.WriteString(lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("✔ "+m.infoMsg) + "\n\n")
+	s.WriteString(header)
+	if body != "" {
+		s.WriteString("\n\n" + body)
 	}
-
-	// 3. Render State View
-	switch m.state {
-	case stateList:
-		s.WriteString(m.listView())
-	case stateDetail:
-		s.WriteString(m.detailView())
-	case stateAdd:
-		s.WriteString(StyleDetailTitle.Render("➕ ADD NEW CHALLENGE") + "\n")
-		s.WriteString(m.form.View())
-	case stateEdit:
-		s.WriteString(StyleDetailTitle.Render("📝 EDIT CHALLENGE") + "\n")
-		s.WriteString(m.form.View())
-	case stateFilterCTFPrompt:
-		s.WriteString(StyleDetailTitle.Render("🔍 FILTER BY CTF NAME") + "\n")
-		s.WriteString(m.ctfInput.View())
-	case stateDeleteConfirm:
-		s.WriteString(m.deleteConfirmView())
+	used := renderedHeight(s.String())
+	// The controls block reuses the bottom-most padding row as its own top
+	// margin, so it consumes controlsH-1 rows of new space.
+	if gap := m.height - used - controlsH + 1; gap > 0 {
+		s.WriteString(strings.Repeat("\n", gap))
 	}
+	s.WriteString(controls)
 
 	return s.String()
 }
 
-func (m Model) listView() string {
-	var s strings.Builder
+func (m Model) headerView() string {
+	var h strings.Builder
+	h.WriteString(StyleTitle.MarginBottom(0).Render("⚡ CTF CHALLENGE TRACKER ⚡"))
+	h.WriteString("\n\n")
+	h.WriteString(StyleSubtitle.MarginBottom(0).Render("Manage live challenges, track missed ones, link writeups!"))
+	if m.errorMsg != "" {
+		h.WriteString("\n\n" + lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("✖ "+m.errorMsg))
+	} else if m.infoMsg != "" {
+		h.WriteString("\n\n" + lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("✔ "+m.infoMsg))
+	}
+	return h.String()
+}
 
-	// Render Active Filters
+// renderedHeight counts visible lines a rendered block occupies, ignoring any
+// trailing newlines.
+func renderedHeight(s string) int {
+	s = strings.TrimRight(s, "\n")
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+func (m Model) controlsView() string {
+	switch m.state {
+	case stateList:
+		return m.listHelpView()
+	case stateDetail:
+		return StyleHelp.Render("Keys: [ESC/v/Enter] list | [e] edit | [s] cycle status | [h] toggle hard flag")
+	case stateAdd, stateEdit:
+		return StyleHelp.Render("Keys: [Tab] next field | [Enter] submit | [Esc] cancel")
+	case stateFilterCTFPrompt:
+		return StyleHelp.Render("Keys: [Enter] apply filter | [Esc] cancel")
+	case stateDeleteConfirm:
+		return StyleHelp.Render("Keys: [y] confirm delete | [n/Esc] cancel")
+	}
+	return ""
+}
+
+func (m Model) bodyView(maxBodyHeight int) string {
+	switch m.state {
+	case stateList:
+		return m.listBodyView(maxBodyHeight)
+	case stateDetail:
+		return m.detailBodyView()
+	case stateAdd:
+		return StyleDetailTitle.Render("➕ ADD NEW CHALLENGE") + "\n" + m.form.View()
+	case stateEdit:
+		return StyleDetailTitle.Render("📝 EDIT CHALLENGE") + "\n" + m.form.View()
+	case stateFilterCTFPrompt:
+		return StyleDetailTitle.Render("🔍 FILTER BY CTF NAME") + "\n" + m.ctfInput.View()
+	case stateDeleteConfirm:
+		return m.deleteConfirmView()
+	}
+	return ""
+}
+
+func (m Model) filterBarView() string {
 	var activeFilters []string
 	if m.filters.CTF != "" {
 		activeFilters = append(activeFilters, fmt.Sprintf("CTF: %s", m.filters.CTF))
@@ -74,23 +121,27 @@ func (m Model) listView() string {
 		activeFilters = append(activeFilters, "Missed Only ✖")
 	}
 
-	if len(activeFilters) > 0 {
-		filterBar := lipgloss.NewStyle().
-			Background(lipgloss.Color("#44475A")).
-			Foreground(ColorWarning).
-			Padding(0, 1).
-			Bold(true).
-			Render("⏳ Filters: [ " + strings.Join(activeFilters, " | ") + " ] (Press 'x' to clear)")
-		s.WriteString(filterBar + "\n\n")
+	if len(activeFilters) == 0 {
+		return ""
 	}
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("#44475A")).
+		Foreground(ColorWarning).
+		Padding(0, 1).
+		Bold(true).
+		Render("⏳ Filters: [ " + strings.Join(activeFilters, " | ") + " ] (Press 'x' to clear)")
+}
 
+func (m Model) listBodyView(maxBodyHeight int) string {
 	if len(m.filtered) == 0 {
-		s.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("   No challenges found. Press 'a' to add a new challenge!"))
-		s.WriteString("\n\n" + m.listHelpView())
-		return s.String()
+		return lipgloss.NewStyle().Foreground(ColorMuted).Render("   No challenges found. Press 'a' to add a new challenge!")
 	}
 
-	// Print table header
+	var lead strings.Builder
+	if bar := m.filterBarView(); bar != "" {
+		lead.WriteString(bar + "\n\n")
+	}
+
 	headerLine := fmt.Sprintf("  %s  %s  %s  %s  %s  %s  %s  %s",
 		lipgloss.NewStyle().Width(4).Render("ID"),
 		lipgloss.NewStyle().Width(20).Render("CTF NAME"),
@@ -101,102 +152,136 @@ func (m Model) listView() string {
 		lipgloss.NewStyle().Width(10).Render("STATUS"),
 		lipgloss.NewStyle().Width(6).Render("HARD?"),
 	)
-	s.WriteString(StyleHeader.Render(headerLine) + "\n")
+	lead.WriteString(StyleHeader.Render(headerLine) + "\n")
+	leadLines := renderedHeight(lead.String())
 
-	for i, ch := range m.filtered {
-		isCursor := i == m.cursor
-
-		// Render ID
-		idStr := ch.ID
-		if len(idStr) > 4 {
-			idStr = idStr[:4]
-		}
-
-		// Render CTF & Challenge Names with truncation to prevent wrapping
-		ctfStr := truncateString(ch.CTFName, 20)
-		nameStr := truncateString(ch.Name, 25)
-
-		// Category
-		catStr := ch.Category
-
-		// Points
-		ptsStr := fmt.Sprintf("%d", ch.Points)
-
-		// Difficulty styling
-		var diffStyle lipgloss.Style
-		switch strings.ToLower(ch.Difficulty) {
-		case "easy":
-			diffStyle = StyleEasy
-		case "medium":
-			diffStyle = StyleMedium
-		case "hard":
-			diffStyle = StyleHard
-		default:
-			diffStyle = StyleUnselected
-		}
-
-		// Status styling & text
-		var statusText string
-		var statusStyle lipgloss.Style
-		switch ch.Status {
-		case storage.StatusSolved:
-			statusText = "✔ Solved"
-			statusStyle = StyleSolved
-		case storage.StatusMissed:
-			statusText = "✖ Missed"
-			statusStyle = StyleMissed
-		default:
-			statusText = "◦ Unsolved"
-			statusStyle = StyleUnsolved
-		}
-
-		// Hard text & style
-		var hardText string
-		var hardStyle lipgloss.Style
-		if ch.FlaggedHard {
-			hardText = "🔥 YES"
-			hardStyle = lipgloss.NewStyle().Foreground(ColorDanger).Bold(true)
-		} else {
-			hardText = "no"
-			hardStyle = lipgloss.NewStyle().Foreground(ColorMuted)
-		}
-
-		cellID := lipgloss.NewStyle().Width(4).Render(idStr)
-		cellCTF := lipgloss.NewStyle().Width(20).Render(ctfStr)
-		cellName := lipgloss.NewStyle().Width(25).Render(nameStr)
-		cellCat := lipgloss.NewStyle().Width(10).Render(catStr)
-		cellPts := lipgloss.NewStyle().Width(6).Render(ptsStr)
-		cellDiff := diffStyle.Width(6).Render(ch.Difficulty)
-		cellStatus := statusStyle.Width(10).Render(statusText)
-		cellHard := hardStyle.Width(6).Render(hardText)
-
-		var rowStyle lipgloss.Style
-		if isCursor {
-			rowStyle = StyleSelected
-		} else {
-			rowStyle = StyleUnselected
-		}
-
-		cellID = rowStyle.Width(4).Render(idStr)
-		cellCTF = rowStyle.Width(20).Render(ctfStr)
-		cellName = rowStyle.Width(25).Render(nameStr)
-		cellCat = rowStyle.Width(10).Render(catStr)
-		cellPts = rowStyle.Width(6).Render(ptsStr)
-		cellDiff = diffStyle.Width(6).Render(ch.Difficulty)
-		cellStatus = statusStyle.Width(10).Render(statusText)
-		cellHard = hardStyle.Width(6).Render(hardText)
-
-		rowContent := fmt.Sprintf("%s  %s  %s  %s  %s  %s  %s  %s",
-			cellID, cellCTF, cellName, cellCat, cellPts, cellDiff, cellStatus, cellHard)
-
-		s.WriteString(rowStyle.Render("▸ "+rowContent) + "\n")
+	// Reserve 2 lines for the "more above / below" scroll indicators.
+	rowsAvail := maxBodyHeight - leadLines - 2
+	if rowsAvail < 1 {
+		rowsAvail = 1
+	}
+	if rowsAvail > len(m.filtered) {
+		rowsAvail = len(m.filtered)
 	}
 
-	s.WriteString("\n" + m.listHelpView())
+	start, end := m.listWindow(rowsAvail)
+
+	var s strings.Builder
+	s.WriteString(lead.String())
+
+	if start > 0 {
+		s.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("  ↕ ... %d more above", start)) + "\n")
+	}
+	for i := start; i < end; i++ {
+		s.WriteString(m.rowView(i) + "\n")
+	}
+	if end < len(m.filtered) {
+		s.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("  ↕ ... %d more below", len(m.filtered)-end)) + "\n")
+	}
+
 	return s.String()
 }
 
-func (m Model) detailView() string {
+// listWindow returns the [start, end) slice of m.filtered that fits in
+// rowsAvail lines while keeping m.cursor visible.
+func (m Model) listWindow(rowsAvail int) (int, int) {
+	total := len(m.filtered)
+	if rowsAvail >= total {
+		return 0, total
+	}
+
+	start := 0
+	end := rowsAvail
+	if m.cursor >= end {
+		start = m.cursor - rowsAvail + 1
+		end = m.cursor + 1
+		if end > total {
+			end = total
+			start = end - rowsAvail
+		}
+	}
+	if start < 0 {
+		start = 0
+		end = start + rowsAvail
+	}
+	return start, end
+}
+
+func (m Model) rowView(i int) string {
+	ch := m.filtered[i]
+	isCursor := i == m.cursor
+
+	idStr := ch.ID
+	if len(idStr) > 4 {
+		idStr = idStr[:4]
+	}
+
+	// Truncate names to prevent wrapping
+	ctfStr := truncateString(ch.CTFName, 20)
+	nameStr := truncateString(ch.Name, 25)
+
+	// Difficulty styling
+	var diffStyle lipgloss.Style
+	switch strings.ToLower(ch.Difficulty) {
+	case "easy":
+		diffStyle = StyleEasy
+	case "medium":
+		diffStyle = StyleMedium
+	case "hard":
+		diffStyle = StyleHard
+	default:
+		diffStyle = StyleUnselected
+	}
+
+	// Status styling & text
+	var statusText string
+	var statusStyle lipgloss.Style
+	switch ch.Status {
+	case storage.StatusSolved:
+		statusText = "✔ Solved"
+		statusStyle = StyleSolved
+	case storage.StatusMissed:
+		statusText = "✖ Missed"
+		statusStyle = StyleMissed
+	default:
+		statusText = "◦ Unsolved"
+		statusStyle = StyleUnsolved
+	}
+
+	// Hard text & style
+	var hardText string
+	var hardStyle lipgloss.Style
+	if ch.FlaggedHard {
+		hardText = "🔥 YES"
+		hardStyle = lipgloss.NewStyle().Foreground(ColorDanger).Bold(true)
+	} else {
+		hardText = "no"
+		hardStyle = lipgloss.NewStyle().Foreground(ColorMuted)
+	}
+
+	var rowStyle lipgloss.Style
+	if isCursor {
+		rowStyle = StyleSelected
+	} else {
+		rowStyle = StyleUnselected
+	}
+
+	cellID := rowStyle.Width(4).Render(idStr)
+	cellCTF := rowStyle.Width(20).Render(ctfStr)
+	cellName := rowStyle.Width(25).Render(nameStr)
+	cellCat := rowStyle.Width(10).Render(ch.Category)
+	cellPts := rowStyle.Width(6).Render(fmt.Sprintf("%d", ch.Points))
+	cellDiff := diffStyle.Width(6).Render(ch.Difficulty)
+	cellStatus := statusStyle.Width(10).Render(statusText)
+	cellHard := hardStyle.Width(6).Render(hardText)
+
+	rowContent := fmt.Sprintf("%s  %s  %s  %s  %s  %s  %s  %s",
+		cellID, cellCTF, cellName, cellCat, cellPts, cellDiff, cellStatus, cellHard)
+
+	return rowStyle.Render("▸ " + rowContent)
+}
+
+func (m Model) detailBodyView() string {
 	ch, ok := m.getSelectedChallenge()
 	if !ok {
 		return "No challenge selected."
@@ -316,14 +401,6 @@ func (m Model) detailView() string {
 
 	s.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Render("┗"+border+"┛") + "\n\n")
 
-	// Custom detail help controls
-	helpLines := []string{
-		"Keys: [ESC/v/Enter] list | [e] edit | [s] cycle status | [h] toggle hard flag",
-	}
-	for _, l := range helpLines {
-		s.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(l) + "\n")
-	}
-
 	return s.String()
 }
 
@@ -355,12 +432,15 @@ func (m Model) listHelpView() string {
 		{"x", "clear all filters", "q", "quit tracker"},
 	}
 
-	for _, row := range helpGrid {
+	for i, row := range helpGrid {
 		key1 := lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Width(8).Render(row[0])
 		desc1 := lipgloss.NewStyle().Foreground(ColorHighlight).Width(25).Render(row[1])
 		key2 := lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Width(8).Render(row[2])
 		desc2 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(row[3])
-		s.WriteString(fmt.Sprintf("  %s %s │ %s %s\n", key1, desc1, key2, desc2))
+		s.WriteString(fmt.Sprintf("  %s %s │ %s %s", key1, desc1, key2, desc2))
+		if i < len(helpGrid)-1 {
+			s.WriteString("\n")
+		}
 	}
 
 	return s.String()
